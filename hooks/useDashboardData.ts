@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { SnapshotDeal, Section, SOURCE_GIDS, SNAPSHOT_LOG_SHEET, TARGET_GID, TargetMap } from '@/lib/types';
+import { SnapshotDeal, Section, SOURCE_GIDS, SNAPSHOT_LOG_SHEET, TargetMap, TEAMS, MEMBERS, TeamName, ALL_MEMBERS } from '@/lib/types';
 import { parseGvizResponse, parseDealsFromGviz, parseGvizDate, isTargetMember, getTeamName } from '@/lib/utils';
 
 // ============================================================
@@ -44,29 +44,42 @@ async function fetchLiveDeals(today: string): Promise<SnapshotDeal[]> {
 // ============================================================
 
 async function fetchTargets(): Promise<TargetMap> {
-  const parsed = await fetchGviz({ gid: TARGET_GID });
+  // サマリーシート（GID=920575235）のcol[1]=目標からNET/MRR目標を取得
+  // 構造: NET行 → 「■ 獲得MRR」行 → MRR行
+  const parsed = await fetchGviz({ gid: '920575235' });
   if (!parsed) return { mrr: {}, net: {} };
 
-  // 空行区切りでブロック分割（1ブロック目=MRR、2ブロック目=NET）
-  const blocks: Array<Record<string, number>> = [];
-  let current: Record<string, number> = {};
-  let hasData = false;
+  const net: Record<string, number> = {};
+  const mrr: Record<string, number> = {};
+  let block: 'net' | 'mrr' = 'net';
+
+  // 「阪納」→「阪納 章加」のように名字+スペースで前方一致して正式名を返す
+  const toFullName = (short: string): string | undefined =>
+    ALL_MEMBERS.find(m => m.startsWith(short + ' ') || m === short);
 
   for (const row of parsed.rows) {
     const name = String(row?.c?.[0]?.v ?? '').trim();
-    const raw = row?.c?.[1]?.v;
-    const amount = (raw !== null && raw !== undefined && raw !== '') ? Number(raw) : NaN;
+    const raw  = row?.c?.[1]?.v;
 
-    if (!name || isNaN(amount)) {
-      if (hasData) { blocks.push(current); current = {}; hasData = false; }
-      continue;
-    }
-    current[name] = amount;
-    hasData = true;
+    if (!name) continue;
+    if (name.includes('獲得MRR') || name === '■ 獲得MRR') { block = 'mrr'; continue; }
+    if (name.includes('チーム') || name.includes('担当者')) continue;
+    if (name.includes('合計') || name.startsWith('更新')) continue;
+    if (raw === null || raw === undefined) continue;
+
+    const amount = Number(raw);
+    const dest   = block === 'net' ? net : mrr;
+    const fullName = toFullName(name);
+    if (fullName) dest[fullName] = amount;
   }
-  if (hasData) blocks.push(current);
 
-  return { mrr: blocks[0] ?? {}, net: blocks[1] ?? {} };
+  // チーム合計をメンバーから計算
+  for (const team of TEAMS) {
+    net[team] = MEMBERS[team as TeamName].reduce((s, m) => s + (net[m] ?? 0), 0);
+    mrr[team] = MEMBERS[team as TeamName].reduce((s, m) => s + (mrr[m] ?? 0), 0);
+  }
+
+  return { mrr, net };
 }
 
 // ============================================================
@@ -84,7 +97,7 @@ async function fetchSnapshotLog(): Promise<SnapshotDeal[]> {
     if (!isTargetMember(owner)) continue;
 
     deals.push({
-      date:           String(row.c[0]?.v ?? ''),
+      date:           parseGvizDate(row.c[0]) || String(row.c[0]?.v ?? ''),
       section:        String(row.c[1]?.v ?? '') as Section,
       type:           String(row.c[2]?.v ?? '') as '実績' | '着地_Pipeline',
       dealName:       String(row.c[3]?.v ?? ''),
