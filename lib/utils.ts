@@ -154,24 +154,27 @@ export function parseDealsFromGviz(
   snapshotDate: string
 ): SnapshotDeal[] {
   const deals: SnapshotDeal[] = [];
+  // SFDCレポート変更後の列インデックス:
+  // [0]=フェーズ [1]=確度(%) [2]=商談名 [4]=期待値 [5]=計上金額
+  // [8]=ヨミ [10]=製品区分 [11]=所有者 [13]=取引先名 [15]=完了予定月
   for (const row of rows) {
-    if (!row?.c || row.c.length < 10) continue;
-    const owner = String(row.c[9]?.v ?? '').trim();
+    if (!row?.c || row.c.length < 12) continue;
+    const owner = String(row.c[11]?.v ?? '').trim();
     if (!isTargetMember(owner)) continue;
 
     deals.push({
       date: snapshotDate,
       section,
       type,
-      dealName:       String(row.c[0]?.v  ?? ''),
+      dealName:       String(row.c[2]?.v  ?? ''),
       owner,
       team:           getTeamName(owner),
-      expectedAmount: Number(row.c[2]?.v  ?? 0),
-      pipelineAmount: Number(row.c[3]?.v  ?? 0),
-      closeDate:      parseGvizDate(row.c[13]),
-      accountName:    String(row.c[11]?.v ?? ''),
-      product:        String(row.c[8]?.v  ?? ''),
-      stage:          String(row.c[6]?.v  ?? ''),
+      expectedAmount: Number(row.c[4]?.v  ?? 0),
+      pipelineAmount: Number(row.c[5]?.v  ?? 0),
+      closeDate:      parseGvizDate(row.c[15]),
+      accountName:    String(row.c[13]?.v ?? ''),
+      product:        String(row.c[10]?.v ?? ''),
+      stage:          String(row.c[8]?.v  ?? ''),
     });
   }
   return deals;
