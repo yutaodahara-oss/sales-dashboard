@@ -67,7 +67,7 @@ export default function DashboardSection({ type, logDeals, liveDeals, filters, t
     filterBySection(applyNonDateFilters(baseForBar, filters), sections),
     [baseForBar, filters, sections]
   );
-  const barData = useMemo(() => buildBarData(barDeals), [barDeals]);
+  const barData = useMemo(() => buildBarData(barDeals, targetTotal), [barDeals, targetTotal]);
 
   return (
     <section className="mb-8">

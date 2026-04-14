@@ -4,7 +4,7 @@
  * 【使い方】
  * 1. Googleスプレッドシートを開く → 拡張機能 → Apps Script
  * 2. このコードを全文コピー＆ペースト → 保存
- * 3. 関数を「createTrigger」に切り替えて「実行」→ 毎日0時に自動スナップショット開始
+ * 3. 関数を「setupFourHourTrigger」に切り替えて「実行」→ 4時間ごとに自動スナップショット開始
  * 4. 「deployAsWebApp」を実行してWebアプリURLを取得 → .env.localに設定
  */
 
@@ -43,23 +43,25 @@ var SOURCES = [
 ];
 
 // 列インデックス（0始まり）
+// ※ SFDCレポートに [0]=フェーズ, [1]=確度(%) が追加されたため全列+2シフト済み
 var COL = {
-  DEAL_NAME:       0,   // 商談名
-  EXPECTED_AMT:    2,   // 期待値売上金額（着地見込み）
-  PIPELINE_AMT:    3,   // 計上金額_売上（管理会計）（Pipeline）
-  STAGE:           6,   // ヨミ_商談
-  PRODUCT:         8,   // 提案製品-大区分_商談
-  OWNER:           9,   // 商談 所有者
-  ACCOUNT:         11,  // 取引先名
-  CLOSE_DATE:      13,  // 完了予定月
+  PHASE:           0,   // フェーズ（新列）
+  DEAL_NAME:       2,   // 商談名
+  EXPECTED_AMT:    4,   // 期待値売上金額（着地見込み）
+  PIPELINE_AMT:    5,   // 計上金額_売上（管理会計）（Pipeline）
+  STAGE:           8,   // ヨミ_商談
+  PRODUCT:        10,   // 提案製品-大区分_商談
+  OWNER:          11,   // 商談 所有者
+  ACCOUNT:        13,   // 取引先名
+  CLOSE_DATE:     15,   // 完了予定月
 };
 
-// SnapshotLog ヘッダー
+// SnapshotLog ヘッダー（A〜M列）
 var HEADER = [
   '取得日', 'section', 'type',
   '商談名', '担当者', '軍',
   '期待値売上金額', '計上金額_売上（管理会計）',
-  '完了予定月', '取引先名', '製品区分', 'ヨミ'
+  '完了予定月', '取引先名', '製品区分', 'ヨミ', 'フェーズ'
 ];
 
 // ============================================================
@@ -129,18 +131,19 @@ function takeSnapshot() {
       }
 
       allRows.push([
-        today,
-        src.section,
-        src.type,
-        String(row[COL.DEAL_NAME] || ''),
-        owner,
-        TARGET_MEMBERS[owner],
-        Number(row[COL.EXPECTED_AMT] || 0),
-        Number(row[COL.PIPELINE_AMT] || 0),
-        closeDate,
-        String(row[COL.ACCOUNT] || ''),
-        String(row[COL.PRODUCT] || ''),
-        String(row[COL.STAGE] || ''),
+        today,                                  // A: 取得日
+        src.section,                            // B: section
+        src.type,                               // C: type
+        String(row[COL.DEAL_NAME] || ''),       // D: 商談名
+        owner,                                  // E: 担当者
+        TARGET_MEMBERS[owner],                  // F: 軍
+        Number(row[COL.EXPECTED_AMT] || 0),     // G: 期待値売上金額
+        Number(row[COL.PIPELINE_AMT] || 0),     // H: 計上金額_売上
+        closeDate,                              // I: 完了予定月
+        String(row[COL.ACCOUNT] || ''),         // J: 取引先名
+        String(row[COL.PRODUCT] || ''),         // K: 製品区分
+        String(row[COL.STAGE] || ''),           // L: ヨミ
+        String(row[COL.PHASE] || ''),           // M: フェーズ
       ]);
       count++;
     }
@@ -205,20 +208,18 @@ function doGet(e) {
 // セットアップ用関数（初回1回だけ実行）
 // ============================================================
 
-/** 毎日0時に takeSnapshot を自動実行するトリガーを作成 */
-function createTrigger() {
-  // 既存トリガー削除
+/** 4時間ごとに takeSnapshot を自動実行するトリガーを作成 */
+function setupFourHourTrigger() {
+  // 既存の takeSnapshot トリガーをすべて削除
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'takeSnapshot') ScriptApp.deleteTrigger(t);
   });
-  // 新規作成
+  // 4時間ごとのトリガーを新規作成
   ScriptApp.newTrigger('takeSnapshot')
     .timeBased()
-    .atHour(0)
-    .everyDays(1)
-    .inTimezone('Asia/Tokyo')
+    .everyHours(4)
     .create();
-  Logger.log('✅ 毎日0時(JST)のトリガーを設定しました');
+  Logger.log('✅ 4時間ごとのトリガーを設定しました');
 }
 
 /** 今すぐ手動でスナップショットを取得（テスト用） */

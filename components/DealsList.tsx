@@ -10,9 +10,10 @@ interface Props {
 }
 
 const METRIC_COLORS: Record<MetricKey, string> = {
-  '実績':    'bg-orange-100 text-orange-700',
-  '着地見込み': 'bg-green-100 text-green-700',
-  'Pipeline総額': 'bg-slate-100 text-slate-600',
+  '実績':             'bg-orange-100 text-orange-700',
+  '必要Pipeline総額': 'bg-indigo-100 text-indigo-600',
+  'Pipeline総額':     'bg-slate-100 text-slate-600',
+  '着地見込み':        'bg-green-100 text-green-700',
 };
 
 function dealToMetric(d: SnapshotDeal): MetricKey {
@@ -25,12 +26,15 @@ export default function DealsList({ deals, selectedMetric, selectedDate, title }
     if (selectedMetric === '実績') return d.type === '実績';
     if (selectedMetric === '着地見込み') return d.type === '着地_Pipeline';
     if (selectedMetric === 'Pipeline総額') return d.type === '着地_Pipeline';
+    if (selectedMetric === '必要Pipeline総額') return d.type === '着地_Pipeline';
     return true;
   });
 
-  // 棒グラフの「Pipeline総額」クリック時は計上金額を、「着地見込み」クリック時は期待値を表示
+  // 棒グラフの「Pipeline総額」「必要Pipeline総額」クリック時は計上金額を、「着地見込み」クリック時は期待値を表示
   const getAmount = (d: SnapshotDeal): number =>
-    selectedMetric === 'Pipeline総額' ? d.pipelineAmount : d.expectedAmount || d.pipelineAmount;
+    (selectedMetric === 'Pipeline総額' || selectedMetric === '必要Pipeline総額')
+      ? d.pipelineAmount
+      : d.expectedAmount || d.pipelineAmount;
 
   const sorted = [...filtered].sort((a, b) => getAmount(b) - getAmount(a));
   const total = sorted.reduce((s, d) => s + getAmount(d), 0);

@@ -13,9 +13,10 @@ interface Props {
 }
 
 const COLORS: Record<MetricKey, string> = {
-  '実績': '#f97316',
-  '着地見込み': '#34d399',
-  'Pipeline総額': '#94a3b8',
+  '実績':             '#f97316',
+  '必要Pipeline総額': '#818cf8',
+  'Pipeline総額':     '#94a3b8',
+  '着地見込み':        '#34d399',
 };
 
 export default function SummaryBarChart({ data, title, selectedDate, selectedMetric, onMetricClick, target }: Props) {

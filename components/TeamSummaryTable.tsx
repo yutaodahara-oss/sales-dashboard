@@ -32,6 +32,16 @@ function calcRow(deals: SnapshotDeal[], owner?: string, team?: string): RowMetri
   return { 実績, Pipeline総額, 着地見込み };
 }
 
+// 必要Pipeline = 目標 - 実績（マイナスは0）
+function calcRequired(target: number, 実績: number): number {
+  return Math.max(0, target - 実績);
+}
+
+// Pipeline未受注 = Pipeline総額 - 実績（マイナスは0）
+function calcUnwon(Pipeline総額: number, 実績: number): number {
+  return Math.max(0, Pipeline総額 - 実績);
+}
+
 function fmt(n: number): string {
   return n === 0 ? '—' : n.toLocaleString('ja-JP');
 }
@@ -78,9 +88,9 @@ export default function TeamSummaryTable({ deals, snapshotDate, targets }: Props
               <th className="text-left py-2 px-4 font-medium text-gray-500 w-44">チーム / 担当者</th>
               <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">目標</th>
               <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">実績</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">Pipeline総額</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap text-indigo-500">必要Pipeline総額</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">Pipeline総額<br/><span className="text-xs font-normal text-gray-400">（未受注）</span></th>
               <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">着地見込み</th>
-              <th className="text-right py-2 px-3 font-medium text-gray-500 whitespace-nowrap">目標－着地見込み</th>
             </tr>
           </thead>
           <tbody>
@@ -96,9 +106,11 @@ export default function TeamSummaryTable({ deals, snapshotDate, targets }: Props
                     {fmt(teamTarget)}
                   </td>
                   <MetricCell value={teamMetrics.実績} />
-                  <MetricCell value={teamMetrics.Pipeline総額} />
+                  <td className="py-1.5 px-3 text-right text-xs tabular-nums whitespace-nowrap font-semibold text-indigo-500">
+                    {fmt(calcRequired(teamTarget, teamMetrics.実績))}
+                  </td>
+                  <MetricCell value={calcUnwon(teamMetrics.Pipeline総額, teamMetrics.実績)} />
                   <MetricCell value={teamMetrics.着地見込み} />
-                  <TargetDiffCell diff={teamMetrics.着地見込み - teamTarget} />
                 </tr>,
                 /* メンバー行 */
                 ...members.map(member => {
@@ -114,9 +126,11 @@ export default function TeamSummaryTable({ deals, snapshotDate, targets }: Props
                         {fmt(memberTarget)}
                       </td>
                       <MetricCell value={m.実績}        dim={allZero} />
-                      <MetricCell value={m.Pipeline総額} dim={allZero} />
+                      <td className={`py-1.5 px-3 text-right text-xs tabular-nums whitespace-nowrap ${allZero ? 'text-gray-300' : 'text-indigo-400'}`}>
+                        {fmt(calcRequired(memberTarget, m.実績))}
+                      </td>
+                      <MetricCell value={calcUnwon(m.Pipeline総額, m.実績)} dim={allZero} />
                       <MetricCell value={m.着地見込み}   dim={allZero} />
-                      <TargetDiffCell diff={m.着地見込み - memberTarget} allZero={allZero} />
                     </tr>
                   );
                 }),
@@ -132,16 +146,14 @@ export default function TeamSummaryTable({ deals, snapshotDate, targets }: Props
               <td className="py-2 px-3 text-right text-xs tabular-nums text-gray-800 whitespace-nowrap">
                 {total.実績.toLocaleString('ja-JP')}
               </td>
+              <td className="py-2 px-3 text-right text-xs tabular-nums text-indigo-600 whitespace-nowrap">
+                {fmt(calcRequired(totalTarget, total.実績))}
+              </td>
               <td className="py-2 px-3 text-right text-xs tabular-nums text-gray-800 whitespace-nowrap">
-                {total.Pipeline総額.toLocaleString('ja-JP')}
+                {calcUnwon(total.Pipeline総額, total.実績).toLocaleString('ja-JP')}
               </td>
               <td className="py-2 px-3 text-right text-xs tabular-nums text-gray-800 whitespace-nowrap">
                 {total.着地見込み.toLocaleString('ja-JP')}
-              </td>
-              <td className={`py-2 px-3 text-right text-xs tabular-nums font-bold whitespace-nowrap ${
-                total.着地見込み - totalTarget >= 0 ? 'text-blue-600' : 'text-red-500'
-              }`}>
-                {totalTarget === 0 ? '—' : (total.着地見込み - totalTarget > 0 ? '+' : '') + (total.着地見込み - totalTarget).toLocaleString('ja-JP')}
               </td>
             </tr>
           </tbody>

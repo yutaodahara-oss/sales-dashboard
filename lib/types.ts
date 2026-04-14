@@ -41,7 +41,7 @@ export interface TrendPoint {
 }
 
 // 棒グラフ用
-export type MetricKey = '実績' | '着地見込み' | 'Pipeline総額';
+export type MetricKey = '実績' | '必要Pipeline総額' | 'Pipeline総額' | '着地見込み';
 export interface BarItem {
   metric: MetricKey;
   amount: number;

@@ -88,11 +88,17 @@ export function buildTrendData(deals: SnapshotDeal[]): TrendPoint[] {
     });
 }
 
-/** 棒グラフデータ（実績 → Pipeline総額 → 着地見込み の順） */
-export function buildBarData(deals: SnapshotDeal[]): BarItem[] {
+/** 棒グラフデータ（実績 → 必要Pipeline総額 → Pipeline総額(未受注) → 着地見込み の順） */
+export function buildBarData(deals: SnapshotDeal[], target?: number): BarItem[] {
   const m = calcMetrics(deals);
-  const METRIC_KEYS: MetricKey[] = ['実績', 'Pipeline総額', '着地見込み'];
-  return METRIC_KEYS.map(k => ({ metric: k, amount: m[k] }));
+  const 必要Pipeline = Math.max(0, (target ?? 0) - m.実績);
+  const 未受注Pipeline = Math.max(0, m.Pipeline総額 - m.実績);
+  return [
+    { metric: '実績',             amount: m.実績 },
+    { metric: '必要Pipeline総額', amount: 必要Pipeline },
+    { metric: 'Pipeline総額',     amount: 未受注Pipeline },
+    { metric: '着地見込み',        amount: m.着地見込み },
+  ];
 }
 
 // ============================================================

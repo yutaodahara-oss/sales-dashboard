@@ -173,7 +173,12 @@ export function useDashboardData(): DashboardData {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // 4時間ごとに自動更新
+    const interval = setInterval(load, 4 * 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   return { logDeals, liveDeals, availableDates, lastUpdated, loading, error, hasSnapshotLog, targets, refresh: load };
 }
