@@ -1,22 +1,31 @@
 import {
   SnapshotDeal, Section, FilterState, MetricKey,
-  TrendPoint, BarItem, MetricSummary, ALL_MEMBERS,
+  TrendPoint, BarItem, MetricSummary, ALL_MEMBERS, TEAMS, MEMBERS, TeamName,
 } from './types';
 
 // ============================================================
 // チーム判定
 // ============================================================
+// ※GAS(00_teamMaster.gs)の resolveTeam_ と同じ方針: 氏名の完全一致のみで
+//   判定する。姓だけでのフォールバックは行わない
+//   （例: 「高橋 優太」がメンバーの状態で、同姓・別人の「高橋 蔵之介」を
+//   姓だけ見て誤ってチームに含めてしまう事故が実際に発生したため）。
+
+function buildOwnerTeamMap(): Record<string, TeamName> {
+  const map: Record<string, TeamName> = {};
+  TEAMS.forEach(team => {
+    MEMBERS[team].forEach(name => { map[name] = team; });
+  });
+  return map;
+}
+const OWNER_TEAM_MAP = buildOwnerTeamMap();
 
 export function getTeamName(owner: string): string {
-  if (/阪納|小川|上西|三田村/.test(owner)) return '阪納軍';
-  if (/村岡|和田|下川/.test(owner)) return '村岡軍';
-  if (/横山|篠田/.test(owner)) return '横山軍';
-  if (/小田原/.test(owner)) return '小田原';
-  return 'その他';
+  return OWNER_TEAM_MAP[owner.trim()] ?? 'その他';
 }
 
 export function isTargetMember(owner: string): boolean {
-  return ALL_MEMBERS.includes(owner);
+  return ALL_MEMBERS.includes(owner.trim());
 }
 
 // ============================================================
@@ -138,7 +147,9 @@ export function parseGvizDate(cell: GvizCell | null): string {
   return '';
 }
 
-export function parseGvizResponse(text: string): { cols: {label: string, type: string}[], rows: GvizRow[] } | null {
+export interface GvizCol { label: string; type: string }
+
+export function parseGvizResponse(text: string): { cols: GvizCol[], rows: GvizRow[] } | null {
   const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
   if (!m) return null;
   try {
@@ -149,38 +160,72 @@ export function parseGvizResponse(text: string): { cols: {label: string, type: s
   }
 }
 
+/** フェーズ文字列が「確定」扱いかどうか（末尾が .A のもの）。GAS(00_teamMaster.gs / 10_snapshot.gs)の isConfirmedPhase_ と同じ判定基準。 */
+export function isConfirmedPhase(phase: string): boolean {
+  return /\.A$/.test(String(phase || '').trim());
+}
+
+/** ヘッダーラベル→列indexのマップを作る（列の並びが変わっても壊れないようにするため、固定indexではなくラベル一致で解決する） */
+function buildColMap(cols: GvizCol[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  cols.forEach((c, i) => {
+    const label = String(c?.label || '').trim();
+    if (label) map[label] = i;
+  });
+  return map;
+}
+
 /**
- * ライブシート（GID指定）から SnapshotDeal[] を生成する
- * gviz の行から直接 deal を作る
+ * ライブシート（SFDCレポートタブを直接GID指定で取得した場合）から
+ * SnapshotDeal[] を生成する。1シート内に確定/見込みの商談が混在しているため、
+ * 行ごとにフェーズを見て 実績(確定) / 着地_Pipeline(見込みのみ) に振り分ける。
+ * ※GAS(10_snapshot.gs)の readReportSheet_ / takeSnapshot と同じ列名・同じロジック。
  */
 export function parseDealsFromGviz(
+  cols: GvizCol[],
   rows: GvizRow[],
   section: Section,
-  type: '実績' | '着地_Pipeline',
   snapshotDate: string
 ): SnapshotDeal[] {
+  const colOf = buildColMap(cols);
+  const need = (label: string) => colOf[label];
+
+  const idxPhase   = need('フェーズ');
+  const idxDeal    = need('商談名');
+  const idxExpect  = need('期待値売上金額');
+  const idxBooked  = need('計上金額_売上（管理会計）');
+  const idxOwner   = need('商談 所有者');
+  const idxClose   = need('完了予定月');
+  const idxAccount = need('取引先名');
+  const idxProduct = need('提案製品-大区分_商談');
+
+  if ([idxPhase, idxDeal, idxExpect, idxBooked, idxOwner, idxClose, idxAccount, idxProduct].some(i => i === undefined)) {
+    // 想定した列名が見つからない = SFDCレポート側で列名が変わった可能性がある
+    return [];
+  }
+
   const deals: SnapshotDeal[] = [];
-  // SFDCレポート変更後の列インデックス:
-  // [0]=フェーズ [1]=確度(%) [2]=商談名 [4]=期待値 [5]=計上金額
-  // [8]=ヨミ [10]=製品区分 [11]=所有者 [13]=取引先名 [15]=完了予定月
   for (const row of rows) {
-    if (!row?.c || row.c.length < 12) continue;
-    const owner = String(row.c[11]?.v ?? '').trim();
-    if (!isTargetMember(owner)) continue;
+    if (!row?.c) continue;
+    const owner = String(row.c[idxOwner]?.v ?? '').trim();
+    if (!owner || !isTargetMember(owner)) continue;
+
+    const phase = String(row.c[idxPhase]?.v ?? '').trim();
+    const confirmed = isConfirmedPhase(phase);
 
     deals.push({
       date: snapshotDate,
       section,
-      type,
-      dealName:       String(row.c[2]?.v  ?? ''),
+      type: confirmed ? '実績' : '着地_Pipeline',
+      dealName:       String(row.c[idxDeal]?.v ?? ''),
       owner,
       team:           getTeamName(owner),
-      expectedAmount: Number(row.c[4]?.v  ?? 0),
-      pipelineAmount: Number(row.c[5]?.v  ?? 0),
-      closeDate:      parseGvizDate(row.c[15]),
-      accountName:    String(row.c[13]?.v ?? ''),
-      product:        String(row.c[10]?.v ?? ''),
-      stage:          String(row.c[8]?.v  ?? ''),
+      expectedAmount: Number(row.c[idxExpect]?.v ?? 0),
+      pipelineAmount: Number(row.c[idxBooked]?.v ?? 0),
+      closeDate:      parseGvizDate(row.c[idxClose]),
+      accountName:    String(row.c[idxAccount]?.v ?? ''),
+      product:        String(row.c[idxProduct]?.v ?? ''),
+      stage:          phase,
     });
   }
   return deals;
