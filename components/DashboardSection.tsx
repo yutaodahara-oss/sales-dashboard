@@ -15,7 +15,7 @@ interface Props {
   targets: TargetMap;
 }
 
-const NET_SECTIONS: Section[] = ['フロー', 'ストック'];
+const NET_SECTIONS: Section[] = ['フロー売上', 'ストック売上'];
 const MRR_SECTIONS: Section[] = ['MRR'];
 
 export default function DashboardSection({ type, logDeals, liveDeals, filters, targets }: Props) {
