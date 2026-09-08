@@ -2,7 +2,8 @@
 // データソース定義
 // ============================================================
 
-export type Section = 'フロー' | 'ストック' | 'MRR';
+// GAS(10_snapshot.gs)が REPORT_SHEETS として書き込む値と完全一致させること
+export type Section = 'フロー売上' | 'ストック売上' | 'MRR';
 export type DataType = '実績' | '着地_Pipeline';
 
 // GAS が SnapshotLog に書き込む1件分のレコード
@@ -57,14 +58,16 @@ export interface TargetMap {
 // フィルター
 // ============================================================
 
-export const TEAMS = ['阪納軍', '村岡軍', '横山軍', '小田原'] as const;
+// ※チーム構成の唯一の定義元は Google Apps Script 側の 00_teamMaster.gs。
+//   変更する場合は必ず両方を同時に更新すること。
+export const TEAMS = ['CGグループ', 'EPグループ', 'MMグループ阪納チーム', 'MMグループ横山チーム'] as const;
 export type TeamName = typeof TEAMS[number];
 
 export const MEMBERS: Record<TeamName, string[]> = {
-  '阪納軍': ['阪納 章加', '小川 裕真', '上西 秀明', '三田村 暢也'],
-  '村岡軍': ['村岡 利彰', '和田 昂樹', '下川 太一'],
-  '横山軍': ['横山 大輝', '篠田 龍一'],
-  '小田原': ['小田原 祐太'],
+  'CGグループ': ['山本 侑紀', '高橋 優太', '名畑 一生'],
+  'EPグループ': ['村岡 利彰', '関 優大', '和中 北斗'],
+  'MMグループ阪納チーム': ['阪納 章加', '小川 裕真', '和田 昂樹', '篠田 龍一'],
+  'MMグループ横山チーム': ['横山 大輝', '下川 太一', '上西 秀明', '外山 桂子', '高村 拓樹'],
 };
 
 export const ALL_MEMBERS = Object.values(MEMBERS).flat();
@@ -80,17 +83,17 @@ export interface FilterState {
 // データソース GID 定義
 // ============================================================
 
-export const SOURCE_GIDS = {
-  'フロー実績':        '156746383',
-  'フロー着地_Pipeline': '227275377',
-  'ストック実績':      '404852902',
-  'ストック着地_Pipeline': '50390764',
-  'MRR実績':          '827037548',
-  'MRR着地_Pipeline': '0',
-} as const;
+// ライブ取得（SnapshotLogにまだ今日分が無いときのフォールバック）用の
+// SFDCレポートタブ。各シートに フェーズ/確定フラグ相当の列があり、
+// 1シートから 実績(確定) と 着地_Pipeline(見込みのみ) の両方を算出する。
+export const LIVE_SHEET_GIDS: Record<Section, string> = {
+  'MRR':      '1163889015',
+  'ストック売上': '893564459',
+  'フロー売上':  '306831779',
+};
 
-// GAS が書き込む SnapshotLog のシート名
-export const SNAPSHOT_LOG_SHEET = '📸SnapshotLog';
+// GAS(10_snapshot.gs)が書き込む スナップショットログ のシート名
+export const SNAPSHOT_LOG_SHEET = 'スナップショットログ_明細';
 
-// 目標シートの GID
-export const TARGET_GID = '1439703039';
+// 目標シート（担当者ごとの NET売上目標 / MRR目標）の GID
+export const TARGET_GID = '489242425';
