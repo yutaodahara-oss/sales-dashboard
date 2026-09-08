@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SPREADSHEET_ID = '16ly8jrTrlgC4DHJ9uIjvSVRL9yFYcmrTzZcLM2tKoP8';
+// FY27上期_予算（チーム再編後の唯一のソーススプレッドシート）
+const SPREADSHEET_ID = '1AJso9hvQHUe9cDfPuH4icy7xgPPleNtCzSWx53a0VVM';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
