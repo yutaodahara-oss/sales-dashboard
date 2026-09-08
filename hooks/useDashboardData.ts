@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { SnapshotDeal, Section, SOURCE_GIDS, SNAPSHOT_LOG_SHEET, TargetMap, TEAMS, MEMBERS, TeamName, ALL_MEMBERS } from '@/lib/types';
+import { SnapshotDeal, Section, LIVE_SHEET_GIDS, SNAPSHOT_LOG_SHEET, TARGET_GID, TargetMap, TEAMS, MEMBERS, TeamName } from '@/lib/types';
 import { parseGvizResponse, parseDealsFromGviz, parseGvizDate, isTargetMember, getTeamName } from '@/lib/utils';
 
 // ============================================================
@@ -18,22 +18,18 @@ async function fetchGviz(params: { gid?: string; sheet?: string }): Promise<Retu
 // ============================================================
 // ライブシートから今日分の SnapshotDeal を取得
 // ============================================================
+// SFDCレポートタブ（MRR / ストック売上 / フロー売上）は1シートに
+// 確定・見込みの商談が混在しているため、1シートにつき1回の取得で
+// 実績(確定)・着地_Pipeline(見込みのみ) の両方を算出する。
 
 async function fetchLiveDeals(today: string): Promise<SnapshotDeal[]> {
-  const LIVE_SOURCES: Array<{ key: keyof typeof SOURCE_GIDS; section: Section; type: '実績' | '着地_Pipeline' }> = [
-    { key: 'フロー実績',          section: 'フロー',   type: '実績' },
-    { key: 'フロー着地_Pipeline', section: 'フロー',   type: '着地_Pipeline' },
-    { key: 'ストック実績',         section: 'ストック', type: '実績' },
-    { key: 'ストック着地_Pipeline',section: 'ストック', type: '着地_Pipeline' },
-    { key: 'MRR実績',             section: 'MRR',     type: '実績' },
-    { key: 'MRR着地_Pipeline',    section: 'MRR',     type: '着地_Pipeline' },
-  ];
+  const sections = Object.keys(LIVE_SHEET_GIDS) as Section[];
 
   const results = await Promise.all(
-    LIVE_SOURCES.map(async src => {
-      const parsed = await fetchGviz({ gid: SOURCE_GIDS[src.key] });
+    sections.map(async section => {
+      const parsed = await fetchGviz({ gid: LIVE_SHEET_GIDS[section] });
       if (!parsed) return [];
-      return parseDealsFromGviz(parsed.rows, src.section, src.type, today);
+      return parseDealsFromGviz(parsed.cols, parsed.rows, section, today);
     })
   );
   return results.flat();
@@ -44,33 +40,18 @@ async function fetchLiveDeals(today: string): Promise<SnapshotDeal[]> {
 // ============================================================
 
 async function fetchTargets(): Promise<TargetMap> {
-  // サマリーシート（GID=920575235）のcol[1]=目標からNET/MRR目標を取得
-  // 構造: NET行 → 「■ 獲得MRR」行 → MRR行
-  const parsed = await fetchGviz({ gid: '920575235' });
+  // 「目標値」シート: A列=担当者(姓 名 フルネーム) B列=チーム C列=NET売上目標 D列=MRR目標
+  const parsed = await fetchGviz({ gid: TARGET_GID });
   if (!parsed) return { mrr: {}, net: {} };
 
   const net: Record<string, number> = {};
   const mrr: Record<string, number> = {};
-  let block: 'net' | 'mrr' = 'net';
-
-  // 「阪納」→「阪納 章加」のように名字+スペースで前方一致して正式名を返す
-  const toFullName = (short: string): string | undefined =>
-    ALL_MEMBERS.find(m => m.startsWith(short + ' ') || m === short);
 
   for (const row of parsed.rows) {
     const name = String(row?.c?.[0]?.v ?? '').trim();
-    const raw  = row?.c?.[1]?.v;
-
-    if (!name) continue;
-    if (name.includes('獲得MRR') || name === '■ 獲得MRR') { block = 'mrr'; continue; }
-    if (name.includes('チーム') || name.includes('担当者')) continue;
-    if (name.includes('合計') || name.startsWith('更新')) continue;
-    if (raw === null || raw === undefined) continue;
-
-    const amount = Number(raw);
-    const dest   = block === 'net' ? net : mrr;
-    const fullName = toFullName(name);
-    if (fullName) dest[fullName] = amount;
+    if (!name || !isTargetMember(name)) continue;
+    net[name] = Number(row?.c?.[2]?.v ?? 0);
+    mrr[name] = Number(row?.c?.[3]?.v ?? 0);
   }
 
   // チーム合計をメンバーから計算
@@ -86,29 +67,34 @@ async function fetchTargets(): Promise<TargetMap> {
 // SnapshotLog シートから蓄積データを取得
 // ============================================================
 
+// スナップショットログ_明細 のヘッダー列（10_snapshot.gs の DETAIL_HEADER と完全一致させること）
+// [0]取得日時 [1]section [2]商談名 [3]商談所有者 [4]チーム [5]フェーズ [6]確定フラグ
+// [7]期待値売上金額 [8]計上金額_売上（管理会計） [9]完了予定月 [10]取引先名 [11]提案製品区分
 async function fetchSnapshotLog(): Promise<SnapshotDeal[]> {
   const parsed = await fetchGviz({ sheet: SNAPSHOT_LOG_SHEET });
   if (!parsed || parsed.rows.length === 0) return [];
 
   const deals: SnapshotDeal[] = [];
   for (const row of parsed.rows) {
-    if (!row?.c || row.c.length < 8) continue;
-    const owner = String(row.c[4]?.v ?? '').trim();
-    if (!isTargetMember(owner)) continue;
+    if (!row?.c || row.c.length < 12) continue;
+    const owner = String(row.c[3]?.v ?? '').trim();
+    if (!owner || !isTargetMember(owner)) continue;
+
+    const confirmedFlag = String(row.c[6]?.v ?? '').trim();
 
     deals.push({
-      date:           parseGvizDate(row.c[0]) || String(row.c[0]?.v ?? ''),
+      date:           parseGvizDate(row.c[0]) || String(row.c[0]?.v ?? '').slice(0, 10),
       section:        String(row.c[1]?.v ?? '') as Section,
-      type:           String(row.c[2]?.v ?? '') as '実績' | '着地_Pipeline',
-      dealName:       String(row.c[3]?.v ?? ''),
+      type:           confirmedFlag === '確定' ? '実績' : '着地_Pipeline',
+      dealName:       String(row.c[2]?.v ?? ''),
       owner,
-      team:           String(row.c[5]?.v ?? '') || getTeamName(owner),
-      expectedAmount: Number(row.c[6]?.v ?? 0),
-      pipelineAmount: Number(row.c[7]?.v ?? 0),
-      closeDate:      parseGvizDate(row.c[8]) || String(row.c[8]?.v ?? ''),
-      accountName:    String(row.c[9]?.v ?? ''),
-      product:        String(row.c[10]?.v ?? ''),
-      stage:          String(row.c[11]?.v ?? ''),
+      team:           String(row.c[4]?.v ?? '') || getTeamName(owner),
+      expectedAmount: Number(row.c[7]?.v ?? 0),
+      pipelineAmount: Number(row.c[8]?.v ?? 0),
+      closeDate:      parseGvizDate(row.c[9]) || String(row.c[9]?.v ?? ''),
+      accountName:    String(row.c[10]?.v ?? ''),
+      product:        String(row.c[11]?.v ?? ''),
+      stage:          String(row.c[5]?.v ?? ''),
     });
   }
   return deals;
