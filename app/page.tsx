@@ -63,10 +63,10 @@ export default function Dashboard() {
                   現在はライブデータ（最新値のみ）を表示しています。日次推移グラフを使うには以下のセットアップが必要です。
                 </p>
                 <ol className="text-xs text-amber-700 mt-2 space-y-1 list-decimal ml-4">
-                  <li>スプレッドシートを開く → 拡張機能 → Apps Script</li>
-                  <li><code className="bg-amber-100 px-1 rounded">gas/snapshot.gs</code> の内容をコピー＆ペースト → 保存</li>
-                  <li>関数を <code className="bg-amber-100 px-1 rounded">createTrigger</code> に切り替えて実行（毎日0時に自動記録開始）</li>
-                  <li>関数を <code className="bg-amber-100 px-1 rounded">runNow</code> に切り替えて実行（今すぐ初回スナップショット取得）</li>
+                  <li>スプレッドシート（FY27上期_予算）を開く → 拡張機能 → Apps Script</li>
+                  <li><code className="bg-amber-100 px-1 rounded">00_teamMaster.gs</code> / <code className="bg-amber-100 px-1 rounded">10_snapshot.gs</code> / <code className="bg-amber-100 px-1 rounded">30_triggers.gs</code> が設置済みであることを確認</li>
+                  <li>関数を <code className="bg-amber-100 px-1 rounded">setupTriggers</code> に切り替えて実行（毎日深夜0時に自動記録開始）</li>
+                  <li>関数を <code className="bg-amber-100 px-1 rounded">manualRunForTest</code> に切り替えて実行（今すぐ初回スナップショット取得）</li>
                 </ol>
               </div>
             </div>
